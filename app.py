@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import colorsys
 from huggingface_hub import hf_hub_download
+import json
 
 # Download model from Hugging Face Hub
 @torch.no_grad()
@@ -110,10 +111,31 @@ def draw_detection_pil(image, predictions, bean_count, show_confidence=True):
 
     return result_img
 
+def create_json_output(predictions, bean_count):
+    """Create JSON output with detection results."""
+    json_data = {
+        "bean_count": bean_count,
+        "detections": []
+    }
+
+    for i in range(bean_count):
+        detection = {
+            "bean_id": i + 1,
+            "confidence": float(predictions['scores'][i].cpu().item()),
+            "bbox": predictions['boxes'][i].cpu().numpy().tolist(),
+            "mask_area": float((predictions['masks'][i][0].cpu().numpy() > 0.5).sum())
+        }
+        json_data["detections"].append(detection)
+
+    if bean_count > 0:
+        json_data["average_confidence"] = float(predictions['scores'].cpu().mean().item())
+
+    return json.dumps(json_data, indent=2)
+
 def predict_beans(image, confidence_threshold, nms_threshold, max_detections, show_confidence):
     """Run inference on uploaded image."""
     if image is None:
-        return None, "Please upload an image first."
+        return None, "Please upload an image first.", None
 
     # Convert to PIL if needed
     if not isinstance(image, Image.Image):
@@ -164,7 +186,10 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections, sh
     else:
         summary = "**No beans detected.** Try lowering the confidence threshold or check image quality."
 
-    return result_image, summary
+    # Create JSON output for download
+    json_output = create_json_output(filtered_predictions, bean_count)
+
+    return result_image, summary, json_output
 
 # Example images
 examples = [
@@ -230,19 +255,20 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
             # Output
             output_image = gr.Image(label="Detection Results", height=400)
             results_text = gr.Markdown()
+            json_download = gr.JSON(label="📥 Detection Data (Copy or Download)", visible=True)
 
     # Event handlers
     detect_btn.click(
         fn=predict_beans,
         inputs=[input_image, confidence_threshold, nms_threshold, max_detections, show_confidence],
-        outputs=[output_image, results_text]
+        outputs=[output_image, results_text, json_download]
     )
 
     # Auto-detect when image is uploaded
     input_image.change(
         fn=predict_beans,
         inputs=[input_image, confidence_threshold, nms_threshold, max_detections, show_confidence],
-        outputs=[output_image, results_text]
+        outputs=[output_image, results_text, json_download]
     )
 
     # Examples section
@@ -250,7 +276,7 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
     gr.Examples(
         examples=examples,
         inputs=[input_image, confidence_threshold, nms_threshold, max_detections, show_confidence],
-        outputs=[output_image, results_text],
+        outputs=[output_image, results_text, json_download],
         fn=predict_beans,
         cache_examples=True
     )
