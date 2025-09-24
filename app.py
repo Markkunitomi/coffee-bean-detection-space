@@ -87,10 +87,7 @@ def draw_detection_pil(image, predictions, bean_count, show_confidence=True):
         result_img = result_img.convert('RGB')
         draw = ImageDraw.Draw(result_img)
 
-        # Draw bounding box
-        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
-
-        # Draw confidence score or bean number
+        # Draw confidence score or bean number (no bounding box)
         if show_confidence:
             label = f"{score:.2f}"
         else:
