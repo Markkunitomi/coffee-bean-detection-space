@@ -17,7 +17,10 @@ def load_model():
         filename="maskrcnn_coffeebeans_v1.safetensors"
     )
 
-    model = maskrcnn_resnet50_fpn(num_classes=2)  # background + bean
+    model = maskrcnn_resnet50_fpn(
+        num_classes=2,  # background + bean
+        box_detections_per_img=300  # Increase from default 100
+    )
 
     from safetensors.torch import load_file
     state_dict = load_file(model_path)
@@ -145,7 +148,8 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections, sh
     # Limit number of detections
     if len(filtered_predictions['boxes']) > max_detections:
         # Keep top detections by confidence
-        top_indices = torch.topk(filtered_predictions['scores'], max_detections)[1]
+        k = min(max_detections, len(filtered_predictions['scores']))
+        top_indices = torch.topk(filtered_predictions['scores'], k)[1]
         filtered_predictions = {k: v[top_indices] for k, v in filtered_predictions.items()}
 
     bean_count = len(filtered_predictions['boxes'])
