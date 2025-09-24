@@ -1,0 +1,13 @@
+[project]
+name = "coffee-bean-detection-space"
+version = "0.1.0"
+description = "Coffee Bean Detection Gradio Space"
+dependencies = [
+    "gradio>=4.44.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "pillow>=9.0.0",
+    "numpy>=1.21.0",
+    "safetensors>=0.3.0",
+    "huggingface-hub>=0.16.0",
+]
