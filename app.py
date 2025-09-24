@@ -177,6 +177,8 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
     # ☕ Coffee Bean Detection with Mask R-CNN
 
     Upload an image of coffee beans to detect and segment individual beans using a fine-tuned Mask R-CNN model.
+
+    **Default: Up to 300 beans detected**
     """)
 
     with gr.Row():
