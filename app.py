@@ -121,35 +121,16 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections):
     # Create summary text
     if bean_count > 0:
         avg_confidence = filtered_predictions['scores'].mean().item()
-        min_confidence = filtered_predictions['scores'].min().item()
-        max_confidence = filtered_predictions['scores'].max().item()
-
-        summary = f"""
-## Detection Results 📊
-- **Beans Detected**: {bean_count}
-- **Average Confidence**: {avg_confidence:.3f}
-- **Confidence Range**: {min_confidence:.3f} - {max_confidence:.3f}
-- **Settings Used**:
-  - Confidence Threshold: {confidence_threshold}
-  - NMS Threshold: {nms_threshold}
-  - Max Detections: {max_detections}
-        """
+        summary = f"**Detected {bean_count} coffee beans** with {avg_confidence:.1%} average confidence"
     else:
-        summary = f"""
-## Detection Results 📊
-- **Beans Detected**: 0
-- **Try adjusting**: Lower the confidence threshold or check image quality
-- **Settings Used**:
-  - Confidence Threshold: {confidence_threshold}
-  - NMS Threshold: {nms_threshold}
-        """
+        summary = "**No beans detected.** Try lowering the confidence threshold or check image quality."
 
     return result_image, summary
 
 # Example images
 examples = [
-    ["examples/green_beans.png", 0.5, 0.5, 100],
-    ["examples/roasted_beans.png", 0.5, 0.3, 100],
+    ["examples/green_beans.png", 0.5, 0.5, 300],
+    ["examples/roasted_beans.png", 0.5, 0.3, 300],
 ]
 
 # Create Gradio interface
@@ -158,12 +139,6 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
     # ☕ Coffee Bean Detection with Mask R-CNN
 
     Upload an image of coffee beans to detect and segment individual beans using a fine-tuned Mask R-CNN model.
-
-    **Model Performance:**
-    - 🎯 **Precision**: 99.92%
-    - 🔍 **Recall**: 96.71%
-    - 📐 **Average IoU**: 90.93%
-    - ⚡ **Trained on**: Mac Mini M2 (CPU)
     """)
 
     with gr.Row():
@@ -196,7 +171,7 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
 
                 max_detections = gr.Slider(
                     minimum=10,
-                    maximum=200,
+                    maximum=300,
                     value=100,
                     step=10,
                     label="Maximum Detections",
