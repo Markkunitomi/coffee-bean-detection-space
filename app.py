@@ -221,7 +221,6 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
                     label="Show Confidence Scores",
                     info="Show confidence scores instead of bean numbers"
                 )
-
             detect_btn = gr.Button("🔍 Detect Beans", variant="primary", size="lg")
 
         with gr.Column(scale=1):
