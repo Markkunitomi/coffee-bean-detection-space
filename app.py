@@ -5,12 +5,8 @@ from torchvision.models.detection import maskrcnn_resnet50_fpn
 from torchvision.transforms import functional as F
 import torchvision.ops as ops
 import numpy as np
-from PIL import Image, ImageDraw
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib import cm
-import io
-import requests
+from PIL import Image, ImageDraw, ImageFont
+import colorsys
 from huggingface_hub import hf_hub_download
 
 # Download model from Hugging Face Hub
@@ -32,6 +28,81 @@ def load_model():
 
 # Load model once at startup
 model = load_model()
+
+# Pre-generate colors for visualization
+def generate_colors(n=20):
+    """Generate n distinct colors using HSV color space."""
+    colors = []
+    for i in range(n):
+        hue = i / n
+        saturation = 0.8 + 0.2 * (i % 2)  # Alternate between 0.8 and 1.0
+        value = 0.8 + 0.2 * ((i + 1) % 2)  # Alternate between 0.8 and 1.0
+        rgb = colorsys.hsv_to_rgb(hue, saturation, value)
+        colors.append(tuple(int(255 * c) for c in rgb))
+    return colors
+
+COLORS = generate_colors(20)
+
+def draw_detection_pil(image, predictions, bean_count):
+    """Fast PIL-based visualization instead of matplotlib."""
+    # Create a copy of the image to draw on
+    result_img = image.copy()
+    draw = ImageDraw.Draw(result_img)
+
+    # Try to load a font, fall back to default if not available
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+
+    # Draw each detection
+    for i in range(bean_count):
+        color = COLORS[i % len(COLORS)]
+
+        # Get detection data
+        box = predictions['boxes'][i].cpu().numpy()
+        score = predictions['scores'][i].cpu().item()
+        mask = predictions['masks'][i][0].cpu().numpy()
+
+        x1, y1, x2, y2 = box.astype(int)
+
+        # Create mask overlay
+        mask_binary = (mask > 0.5).astype(np.uint8) * 255
+        mask_colored = Image.fromarray(mask_binary, mode='L')
+
+        # Create colored overlay
+        overlay = Image.new('RGBA', result_img.size, (*color, 100))  # Semi-transparent
+        mask_rgba = Image.new('RGBA', result_img.size, (0, 0, 0, 0))
+
+        # Apply mask to overlay
+        mask_rgba.paste(overlay, mask=mask_colored)
+        result_img = Image.alpha_composite(result_img.convert('RGBA'), mask_rgba).convert('RGB')
+        draw = ImageDraw.Draw(result_img)
+
+        # Draw bounding box
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+
+        # Draw confidence score
+        label = f"{score:.2f}"
+        if font:
+            # Get text size for background
+            bbox = draw.textbbox((0, 0), label, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        else:
+            text_width, text_height = 30, 15  # Fallback size
+
+        # Draw text background
+        text_bg_coords = [x1, y1 - text_height - 4, x1 + text_width + 8, y1]
+        draw.rectangle(text_bg_coords, fill=color)
+
+        # Draw text
+        draw.text((x1 + 4, y1 - text_height - 2), label, fill='white', font=font)
+
+    return result_img
 
 def predict_beans(image, confidence_threshold, nms_threshold, max_detections):
     """Run inference on uploaded image."""
@@ -73,50 +144,11 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections):
 
     bean_count = len(filtered_predictions['boxes'])
 
-    # Create visualization
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-    ax.imshow(image)
-    ax.axis('off')
-
-    # Colors for visualization
-    colors = plt.colormaps.get_cmap('tab20')
-
-    # Draw detections
-    for i in range(bean_count):
-        color = colors(i % 20)
-
-        # Draw mask
-        mask = filtered_predictions['masks'][i][0].cpu().numpy()
-        masked = np.ma.masked_where(mask < 0.5, mask)
-        ax.imshow(masked, alpha=0.4, cmap=plt.cm.colors.ListedColormap([color]))
-
-        # Draw bounding box
-        box = filtered_predictions['boxes'][i].cpu().numpy()
-        x1, y1, x2, y2 = box
-        rect = patches.Rectangle(
-            (x1, y1), x2 - x1, y2 - y1,
-            linewidth=2, edgecolor=color, facecolor='none'
-        )
-        ax.add_patch(rect)
-
-        # Add confidence score
-        score = filtered_predictions['scores'][i].cpu().item()
-        ax.text(
-            x1, y1 - 5, f'{score:.2f}',
-            color='white', fontsize=10, weight='bold',
-            bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.8)
-        )
-
-    ax.set_title(f'Detected {bean_count} Coffee Beans', fontsize=16, fontweight='bold')
-
-    plt.tight_layout()
-
-    # Convert plot to image
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    result_image = Image.open(buf)
-    plt.close()
+    # Create fast PIL-based visualization
+    if bean_count > 0:
+        result_image = draw_detection_pil(image, filtered_predictions, bean_count)
+    else:
+        result_image = image.copy()
 
     # Create summary text
     if bean_count > 0:
@@ -225,4 +257,4 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
     """)
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(share=True)
