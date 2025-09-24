@@ -79,7 +79,7 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections):
     ax.axis('off')
 
     # Colors for visualization
-    colors = cm.get_cmap('tab20')
+    colors = plt.colormaps.get_cmap('tab20')
 
     # Draw detections
     for i in range(bean_count):
