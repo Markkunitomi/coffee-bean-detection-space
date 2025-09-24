@@ -56,8 +56,6 @@ An interactive demo for detecting and segmenting coffee beans using a fine-tuned
 ## Links
 
 - 🤗 [Model Repository](https://huggingface.co/Kunitomi/coffee-bean-maskrcnn)
-- 💻 [Source Code](https://github.com/Markkunitomi/bean-vision)
-- 📖 [Documentation](https://github.com/Markkunitomi/bean-vision/blob/main/README.md)
 
 ---
 
