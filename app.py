@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import colorsys
 from huggingface_hub import hf_hub_download
 import json
+import gc
 
 # Download model from Hugging Face Hub
 @torch.no_grad()
@@ -26,6 +27,9 @@ def load_model():
     from safetensors.torch import load_file
     state_dict = load_file(model_path)
     model.load_state_dict(state_dict)
+
+    # Force CPU mode to reduce memory usage
+    model = model.cpu()
     model.eval()
 
     return model
@@ -66,10 +70,10 @@ def draw_detection_pil(image, predictions, bean_count, show_confidence=True):
     for i in range(bean_count):
         color = COLORS[i % len(COLORS)]
 
-        # Get detection data
-        box = predictions['boxes'][i].cpu().numpy()
-        score = predictions['scores'][i].cpu().item()
-        mask = predictions['masks'][i][0].cpu().numpy()
+        # Get detection data (already numpy arrays)
+        box = predictions['boxes'][i]
+        score = float(predictions['scores'][i])
+        mask = predictions['masks'][i][0]
 
         x1, y1, x2, y2 = box.astype(int)
 
@@ -121,14 +125,14 @@ def create_json_output(predictions, bean_count):
     for i in range(bean_count):
         detection = {
             "bean_id": i + 1,
-            "confidence": float(predictions['scores'][i].cpu().item()),
-            "bbox": predictions['boxes'][i].cpu().numpy().tolist(),
-            "mask_area": float((predictions['masks'][i][0].cpu().numpy() > 0.5).sum())
+            "confidence": float(predictions['scores'][i]),
+            "bbox": predictions['boxes'][i].tolist(),
+            "mask_area": float((predictions['masks'][i][0] > 0.5).sum())
         }
         json_data["detections"].append(detection)
 
     if bean_count > 0:
-        json_data["average_confidence"] = float(predictions['scores'].cpu().mean().item())
+        json_data["average_confidence"] = float(np.mean(predictions['scores']))
 
     return json.dumps(json_data, indent=2)
 
@@ -144,8 +148,8 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections, sh
     # Convert to RGB
     image = image.convert('RGB')
 
-    # Preprocess image
-    image_tensor = F.to_tensor(image).unsqueeze(0)
+    # Preprocess image - ensure CPU tensor
+    image_tensor = F.to_tensor(image).unsqueeze(0).cpu()
 
     # Run inference
     with torch.no_grad():
@@ -153,23 +157,35 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections, sh
 
     # Apply NMS
     keep = ops.nms(predictions['boxes'], predictions['scores'], nms_threshold)
-    predictions = {k: v[keep] for k, v in predictions.items()}
+
+    # Convert to numpy immediately to free tensor memory
+    boxes_np = predictions['boxes'][keep].cpu().numpy()
+    scores_np = predictions['scores'][keep].cpu().numpy()
+    labels_np = predictions['labels'][keep].cpu().numpy()
+    masks_np = predictions['masks'][keep].cpu().numpy()
+
+    # Delete original predictions to free memory
+    del predictions
 
     # Filter by confidence threshold
-    mask = predictions['scores'] > confidence_threshold
+    mask = scores_np > confidence_threshold
     filtered_predictions = {
-        'boxes': predictions['boxes'][mask],
-        'labels': predictions['labels'][mask],
-        'scores': predictions['scores'][mask],
-        'masks': predictions['masks'][mask]
+        'boxes': boxes_np[mask],
+        'labels': labels_np[mask],
+        'scores': scores_np[mask],
+        'masks': masks_np[mask]
     }
+
+    # Clean up intermediate arrays
+    del boxes_np, scores_np, labels_np, masks_np
 
     # Limit number of detections
     if len(filtered_predictions['boxes']) > max_detections:
         # Keep top detections by confidence
         k = min(max_detections, len(filtered_predictions['scores']))
-        top_indices = torch.topk(filtered_predictions['scores'], k)[1]
-        filtered_predictions = {k: v[top_indices] for k, v in filtered_predictions.items()}
+        top_indices = np.argpartition(filtered_predictions['scores'], -k)[-k:]
+        top_indices = top_indices[np.argsort(filtered_predictions['scores'][top_indices])[::-1]]
+        filtered_predictions = {key: val[top_indices] for key, val in filtered_predictions.items()}
 
     bean_count = len(filtered_predictions['boxes'])
 
@@ -181,13 +197,22 @@ def predict_beans(image, confidence_threshold, nms_threshold, max_detections, sh
 
     # Create summary text
     if bean_count > 0:
-        avg_confidence = filtered_predictions['scores'].mean().item()
+        avg_confidence = np.mean(filtered_predictions['scores'])
         summary = f"**Detected {bean_count} coffee beans** with {avg_confidence:.1%} average confidence"
     else:
         summary = "**No beans detected.** Try lowering the confidence threshold or check image quality."
 
     # Create JSON output for download
     json_output = create_json_output(filtered_predictions, bean_count)
+
+    # Clean up memory
+    del filtered_predictions
+    del image_tensor
+    gc.collect()
+
+    # Clear any PyTorch cache
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return result_image, summary, json_output
 
