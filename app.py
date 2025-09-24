@@ -220,7 +220,6 @@ with gr.Blocks(title="Coffee Bean Detection", theme=gr.themes.Soft()) as demo:
 
     **Links:**
     - 🤗 [Model on Hugging Face](https://huggingface.co/Kunitomi/coffee-bean-maskrcnn)
-    - 💻 [Code Repository](https://github.com/Markkunitomi/bean-vision)
 
     Built by [Mark Kunitomi](https://huggingface.co/Kunitomi)
     """)
